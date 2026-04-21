@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>股票盈虧 + 三段式出場 V2</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen flex items-start justify-center py-8 px-4">
+<div class="w-full max-w-3xl space-y-6">
+
+  <!-- Header -->
+  <header class="text-center">
+    <h1 class="text-3xl font-bold text-slate-800">股票盈虧 + 三段式出場 V2</h1>
+    <p class="text-sm text-slate-500 mt-1">左側加碼 → 分批出場 → 自動校準波動度</p>
+  </header>
+
+  <!-- ───── Part 1：持倉基本資料 ───── -->
+  <section class="bg-white rounded-2xl shadow p-6 space-y-4">
+    <h2 class="text-lg font-semibold text-slate-700 border-b pb-2">1. 持倉資料</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">股票代號 (自動校準用)</label>
+        <div class="flex gap-2">
+          <input id="symbol" type="text" value="NVTS"
+            class="flex-1 px-3 py-2 border border-slate-300 rounded-lg uppercase" />
+          <button id="calibrateBtn"
+            class="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+            🤖 自動
+          </button>
+        </div>
+        <p id="fetchStatus" class="text-xs text-slate-500 mt-1">Google Sites 無法抓資料,請改用下方手動輸入</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">
+          手動 ATR% (每日振幅)
+          <span class="text-[10px] text-slate-400">查 TradingView / Yahoo</span>
+        </label>
+        <div class="flex gap-2">
+          <input id="manualAtr" type="number" step="0.1" value="5.0"
+            class="flex-1 px-3 py-2 border border-slate-300 rounded-lg"
+            placeholder="例如 5.0" />
+          <button id="applyManualAtrBtn"
+            class="px-3 py-2 bg-slate-700 text-white rounded-lg text-sm hover:bg-slate-800">
+            套用
+          </button>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">參考值:故事股 ~5-8% · 成長股 ~2-4% · 防禦股 ~1-2%</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">買入均價 (USD)</label>
+        <input id="avgCost" type="number" step="0.01" value="7.40"
+          class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">目前股價 (USD)</label>
+        <input id="currentPrice" type="number" step="0.01" value="8.50"
+          class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">持有股數</label>
+        <input id="shares" type="number" step="1" value="1000"
+          class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">美金兌台幣匯率 (可自行修改)</label>
+        <input id="fxRate" type="number" step="0.01" value="32.50"
+          class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">此波段最高價 (用於停利追蹤)</label>
+        <input id="peakPrice" type="number" step="0.01" value="8.50"
+          class="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Part 2：目前盈虧 + 女友分紅 ───── -->
+  <section class="bg-white rounded-2xl shadow p-6 space-y-3">
+    <h2 class="text-lg font-semibold text-slate-700 border-b pb-2">2. 目前盈虧</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-center">
+      <div class="bg-slate-50 rounded-xl p-3">
+        <div class="text-xs text-slate-500">總成本 (NT$)</div>
+        <div id="totalCost" class="text-xl font-semibold text-slate-800 mt-1">NT$0</div>
+        <div id="totalCostUsd" class="text-[10px] text-slate-400 mt-0.5">$0 USD</div>
+      </div>
+      <div class="bg-slate-50 rounded-xl p-3">
+        <div class="text-xs text-slate-500">目前市值 (NT$)</div>
+        <div id="totalValue" class="text-xl font-semibold text-slate-800 mt-1">NT$0</div>
+        <div id="totalValueUsd" class="text-[10px] text-slate-400 mt-0.5">$0 USD</div>
+      </div>
+      <div class="bg-slate-50 rounded-xl p-3">
+        <div class="text-xs text-slate-500">未實現盈虧 (NT$)</div>
+        <div id="unrealizedPnl" class="text-xl font-semibold text-slate-800 mt-1 flex items-center justify-center gap-1">
+          <span id="trendingIconSpan"></span>
+          <span id="unrealizedPnlValue">NT$0</span>
+        </div>
+        <div id="unrealizedPnlPct" class="text-xs text-slate-500 mt-0.5">0.00%</div>
+      </div>
+    </div>
+
+    <div class="bg-pink-50 border border-pink-200 rounded-xl p-3 mt-3 text-center">
+      <div class="text-xs text-pink-600">💝 楠瑆分紅 (15% × 未實現獲利)</div>
+      <div id="girlfriendShare" class="text-xl font-semibold text-pink-700 mt-1">NT$0</div>
+    </div>
+  </section>
+
+  <!-- ───── Part 3：分段出場規則 ───── -->
+  <section class="bg-white rounded-2xl shadow p-6 space-y-4">
+    <h2 class="text-lg font-semibold text-slate-700 border-b pb-2">3. 三段式出場設定</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-600 mb-1">股票類型 (自動填入預設值)</label>
+        <select id="stockType" class="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white">
+          <option value="story">故事小型股 (+50 / +100 / -25%)</option>
+          <option value="growth">成長型 (+25 / +60 / -15%)</option>
+          <option value="defensive">防禦型 (+15 / +30 / -10%)</option>
+          <option value="custom">自訂</option>
+        </select>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Lot1 停利 %</label>
+          <input id="lot1Pct" type="number" step="1" value="50"
+            class="w-full px-2 py-2 border border-slate-300 rounded-lg text-center" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Lot2 停利 %</label>
+          <input id="lot2Pct" type="number" step="1" value="100"
+            class="w-full px-2 py-2 border border-slate-300 rounded-lg text-center" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Lot3 回檔 %</label>
+          <input id="lot3Pct" type="number" step="1" value="25"
+            class="w-full px-2 py-2 border border-slate-300 rounded-lg text-center" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Lot 卡片 -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <!-- Lot 1 -->
+      <div class="border border-emerald-200 bg-emerald-50 rounded-xl p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-emerald-700">Lot 1 · 免費交易</span>
+          <span class="text-[10px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded">30%</span>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">觸發價 (漲 <span id="lot1PctLabel">50</span>%)</div>
+        <div id="lot1Trigger" class="text-lg font-semibold text-slate-800">$0</div>
+        <div class="text-xs text-slate-500 mt-1">賣出股數 / 實現獲利 (NT$)</div>
+        <div id="lot1Shares" class="text-sm text-slate-700">0 股</div>
+        <div id="lot1Profit" class="text-sm font-semibold text-emerald-700">NT$0</div>
+        <div id="lot1Status" class="text-[11px] mt-1 text-slate-500">尚未觸發</div>
+      </div>
+
+      <!-- Lot 2 -->
+      <div class="border border-sky-200 bg-sky-50 rounded-xl p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-sky-700">Lot 2 · 基本目標</span>
+          <span class="text-[10px] bg-sky-200 text-sky-800 px-1.5 py-0.5 rounded">30%</span>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">觸發價 (漲 <span id="lot2PctLabel">100</span>%)</div>
+        <div id="lot2Trigger" class="text-lg font-semibold text-slate-800">$0</div>
+        <div class="text-xs text-slate-500 mt-1">賣出股數 / 實現獲利 (NT$)</div>
+        <div id="lot2Shares" class="text-sm text-slate-700">0 股</div>
+        <div id="lot2Profit" class="text-sm font-semibold text-sky-700">NT$0</div>
+        <div id="lot2Status" class="text-[11px] mt-1 text-slate-500">尚未觸發</div>
+      </div>
+
+      <!-- Lot 3 -->
+      <div class="border border-amber-200 bg-amber-50 rounded-xl p-3">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-amber-700">Lot 3 · 跑者</span>
+          <span class="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded">40%</span>
+        </div>
+        <div class="text-xs text-slate-500 mt-1">停利點 (高點回檔 <span id="lot3PctLabel">25</span>%)</div>
+        <div id="lot3Trigger" class="text-lg font-semibold text-slate-800">$0</div>
+        <div class="text-xs text-slate-500 mt-1">賣出股數 / 實現獲利 (NT$)</div>
+        <div id="lot3Shares" class="text-sm text-slate-700">0 股</div>
+        <div id="lot3Profit" class="text-sm font-semibold text-amber-700">NT$0</div>
+        <div id="lot3Status" class="text-[11px] mt-1 text-slate-500">尚未觸發</div>
+      </div>
+    </div>
+
+    <!-- 全部出場總和 -->
+    <div class="bg-slate-900 text-white rounded-xl p-4 text-center">
+      <div class="text-xs text-slate-300">三段全部達標預估總實現獲利 (NT$)</div>
+      <div id="totalRealized" class="text-2xl font-bold mt-1">NT$0</div>
+      <div id="totalRealizedUsd" class="text-[11px] text-slate-400 mt-0.5">$0 USD</div>
+    </div>
+  </section>
+
+  <!-- ───── Part 4：使用說明 ───── -->
+  <section class="bg-white rounded-2xl shadow p-6 text-sm text-slate-600 space-y-2">
+    <h2 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-2">4. 三段式出場心法</h2>
+    <p>• <strong>Lot 1 (30%)：</strong>先收回本金 + 部分獲利，讓剩下的部位變成「免費交易」，下跌不再焦慮。</p>
+    <p>• <strong>Lot 2 (30%)：</strong>波段主目標觸發就落袋，鎖定確定利潤。</p>
+    <p>• <strong>Lot 3 (40%)：</strong>保留跑者,用「高點回檔」追蹤停利,避免賣太早錯過大漲。</p>
+    <p>• <strong>🤖 自動校準</strong>會抓近 14 日 ATR (每日振幅),把停利停損調到股票真實波動範圍。ATR 越大 → 停利越寬。</p>
+    <p class="text-xs text-slate-400 pt-2">資料來源：Stooq (免金鑰、免 CORS)。台股請改為美股代號。</p>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ─── SVG icons 用 createElementNS 建構，避免 innerHTML ───
+  function makeTrendIcon(direction) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('xmlns', ns);
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2.2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    const poly = document.createElementNS(ns, 'polyline');
+    if (direction === 'up') {
+      poly.setAttribute('points', '23 6 13.5 15.5 8.5 10.5 1 18');
+    } else {
+      poly.setAttribute('points', '23 18 13.5 8.5 8.5 13.5 1 6');
+    }
+    svg.appendChild(poly);
+    const cap = document.createElementNS(ns, 'polyline');
+    cap.setAttribute('points', direction === 'up' ? '17 6 23 6 23 12' : '17 18 23 18 23 12');
+    svg.appendChild(cap);
+    return svg;
+  }
+
+  // ─── Preset 對應 ───
+  const PRESETS = {
+    story:     { lot1: 50, lot2: 100, lot3: 25 },
+    growth:    { lot1: 25, lot2: 60,  lot3: 15 },
+    defensive: { lot1: 15, lot2: 30,  lot3: 10 },
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function fmtUsd(n)  { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtTwd(n)  { return 'NT$' + Math.round(n).toLocaleString('zh-TW'); }
+  function fmtPct(n)  { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
+
+  // ─── 盈虧主計算 ───
+  function recompute() {
+    const avgCost = parseFloat($('avgCost').value) || 0;
+    const price   = parseFloat($('currentPrice').value) || 0;
+    const shares  = parseFloat($('shares').value) || 0;
+    const fx      = parseFloat($('fxRate').value) || 0;
+    const peak    = parseFloat($('peakPrice').value) || price;
+
+    const lot1Pct = parseFloat($('lot1Pct').value) || 0;
+    const lot2Pct = parseFloat($('lot2Pct').value) || 0;
+    const lot3Pct = parseFloat($('lot3Pct').value) || 0;
+
+    // 基本盈虧
+    const totalCost  = avgCost * shares;
+    const totalValue = price   * shares;
+    const pnl        = totalValue - totalCost;
+    const pnlPct     = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
+    const isProfit   = pnl >= 0;
+
+    $('totalCost').textContent         = fmtTwd(totalCost * fx);
+    $('totalValue').textContent        = fmtTwd(totalValue * fx);
+    $('totalCostUsd').textContent      = fmtUsd(totalCost) + ' USD';
+    $('totalValueUsd').textContent     = fmtUsd(totalValue) + ' USD';
+    $('unrealizedPnlValue').textContent = fmtTwd(pnl * fx);
+    $('unrealizedPnlPct').textContent  = fmtPct(pnlPct) + ' · ' + fmtUsd(pnl) + ' USD';
+
+    const pnlBox = $('unrealizedPnl');
+    pnlBox.classList.remove('text-emerald-600', 'text-rose-600', 'text-slate-800');
+    pnlBox.classList.add(isProfit ? 'text-emerald-600' : 'text-rose-600');
+
+    // 替換 trend icon（先清空再 append）
+    const iconSpan = $('trendingIconSpan');
+    while (iconSpan.firstChild) iconSpan.removeChild(iconSpan.firstChild);
+    iconSpan.appendChild(makeTrendIcon(isProfit ? 'up' : 'down'));
+
+    // 女友分紅
+    const gfTwd = isProfit ? pnl * fx * 0.15 : 0;
+    $('girlfriendShare').textContent = fmtTwd(gfTwd);
+
+    // Lot 配比：30 / 30 / 40
+    const lot1Shares = Math.floor(shares * 0.30);
+    const lot2Shares = Math.floor(shares * 0.30);
+    const lot3Shares = shares - lot1Shares - lot2Shares;
+
+    // Lot 1 & 2：avgCost × (1 + pct)
+    const lot1Trigger = avgCost * (1 + lot1Pct / 100);
+    const lot2Trigger = avgCost * (1 + lot2Pct / 100);
+
+    // Lot 3：peak × (1 - pct)
+    const lot3Trigger = peak * (1 - lot3Pct / 100);
+
+    // 各段實現獲利（USD × FX）
+    const lot1Profit = (lot1Trigger - avgCost) * lot1Shares * fx;
+    const lot2Profit = (lot2Trigger - avgCost) * lot2Shares * fx;
+    const lot3Profit = (lot3Trigger - avgCost) * lot3Shares * fx;
+
+    $('lot1Trigger').textContent = fmtUsd(lot1Trigger);
+    $('lot2Trigger').textContent = fmtUsd(lot2Trigger);
+    $('lot3Trigger').textContent = fmtUsd(lot3Trigger);
+
+    $('lot1Shares').textContent = lot1Shares.toLocaleString() + ' 股';
+    $('lot2Shares').textContent = lot2Shares.toLocaleString() + ' 股';
+    $('lot3Shares').textContent = lot3Shares.toLocaleString() + ' 股';
+
+    $('lot1Profit').textContent = fmtTwd(lot1Profit);
+    $('lot2Profit').textContent = fmtTwd(lot2Profit);
+    $('lot3Profit').textContent = fmtTwd(lot3Profit);
+
+    $('lot1PctLabel').textContent = lot1Pct;
+    $('lot2PctLabel').textContent = lot2Pct;
+    $('lot3PctLabel').textContent = lot3Pct;
+
+    // 觸發狀態
+    setStatus('lot1Status', price >= lot1Trigger, '✅ 已到價,可賣出免費化', '尚未觸發');
+    setStatus('lot2Status', price >= lot2Trigger, '✅ 已到價,建議落袋主目標', '尚未觸發');
+    // Lot 3：peak 超越入場 + 回檔到 trigger 以下才賣
+    const lot3Armed = peak > avgCost * 1.2;
+    const lot3Fired = lot3Armed && price <= lot3Trigger;
+    setStatus(
+      'lot3Status',
+      lot3Fired,
+      '🚨 高點回檔達標,跑者出場',
+      lot3Armed ? '追蹤中 · 待回檔觸發' : '高點未夠高,尚未啟動追蹤'
+    );
+
+    // 三段總和
+    const totalTwd = lot1Profit + lot2Profit + lot3Profit;
+    const totalUsd = totalTwd / (fx || 1);
+    $('totalRealized').textContent    = fmtTwd(totalTwd);
+    $('totalRealizedUsd').textContent = fmtUsd(totalUsd) + ' USD';
+  }
+
+  function setStatus(id, fired, firedText, idleText) {
+    const el = $(id);
+    el.textContent = fired ? firedText : idleText;
+    el.classList.remove('text-emerald-700', 'text-slate-500');
+    el.classList.add(fired ? 'text-emerald-700' : 'text-slate-500');
+  }
+
+  // ─── Preset 觸發 ───
+  $('stockType').addEventListener('change', (e) => {
+    const preset = PRESETS[e.target.value];
+    if (!preset) return;
+    $('lot1Pct').value = preset.lot1;
+    $('lot2Pct').value = preset.lot2;
+    $('lot3Pct').value = preset.lot3;
+    recompute();
+  });
+
+  // ─── 24 小時 localStorage 快取 ───
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  function cacheGet(key) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (Date.now() - obj.ts > CACHE_TTL_MS) return null;
+      return obj.data;
+    } catch (_) { return null; }
+  }
+  function cacheSet(key, data) {
+    try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch (_) {}
+  }
+
+  // ─── 自動校準:多重資料源 + 多重 proxy fallback ───
+  async function tryFetch(url) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      const t = await r.text();
+      return t && t.length > 50 ? t : null;
+    } catch (_) { return null; }
+  }
+
+  function proxyList(baseUrl) {
+    return [
+      baseUrl,
+      'https://corsproxy.io/?' + encodeURIComponent(baseUrl),
+      'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(baseUrl),
+      'https://api.allorigins.win/raw?url=' + encodeURIComponent(baseUrl),
+    ];
+  }
+
+  // ─── USD → TWD 匯率 (Yahoo USDTWD=X) ───
+  async function fetchFxRate() {
+    const cached = cacheGet('fx:usdtwd');
+    if (cached) return { rate: cached, fromCache: true };
+
+    const base = 'https://query1.finance.yahoo.com/v8/finance/chart/USDTWD=X?range=5d&interval=1d';
+    for (const u of proxyList(base)) {
+      const txt = await tryFetch(u);
+      if (!txt) continue;
+      try {
+        const j = JSON.parse(txt);
+        const closes = j?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+        if (!closes || closes.length === 0) continue;
+        const latest = [...closes].reverse().find(c => c != null);
+        if (!latest) continue;
+        cacheSet('fx:usdtwd', latest);
+        return { rate: latest, fromCache: false };
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  async function fetchYahooChart(symbol) {
+    // Yahoo Finance v8 chart API 回傳 JSON,經過 proxy
+    const base = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=2mo&interval=1d`;
+    for (const u of proxyList(base)) {
+      const txt = await tryFetch(u);
+      if (!txt) continue;
+      try {
+        const j = JSON.parse(txt);
+        const res = j?.chart?.result?.[0];
+        const quote = res?.indicators?.quote?.[0];
+        if (!quote || !quote.high || !quote.low || !quote.close) continue;
+        const rows = [];
+        for (let i = 0; i < quote.close.length; i++) {
+          if (quote.high[i] != null && quote.low[i] != null && quote.close[i] != null) {
+            rows.push({ high: quote.high[i], low: quote.low[i], close: quote.close[i] });
+          }
+        }
+        if (rows.length >= 15) return rows;
+      } catch (_) { /* 繼續嘗試 */ }
+    }
+    return null;
+  }
+
+  async function fetchStooq(symbol) {
+    const base = `https://stooq.com/q/d/l/?s=${symbol.toLowerCase()}.us&i=d`;
+    for (const u of proxyList(base)) {
+      const txt = await tryFetch(u);
+      if (!txt || !txt.toLowerCase().includes('date')) continue;
+      const lines = txt.trim().split('\n');
+      if (lines.length < 20) continue;
+      const rows = lines.slice(1).map((ln) => {
+        const p = ln.split(',');
+        return { high: parseFloat(p[2]), low: parseFloat(p[3]), close: parseFloat(p[4]) };
+      }).filter((r) => !isNaN(r.close));
+      if (rows.length >= 15) return rows;
+    }
+    return null;
+  }
+
+  async function fetchStockData(symbol) {
+    const cacheKey = 'stock:' + symbol.toUpperCase();
+    const cached = cacheGet(cacheKey);
+    if (cached) return { ...cached, fromCache: true };
+
+    let rows = await fetchYahooChart(symbol);
+    let source = 'Yahoo';
+    if (!rows) { rows = await fetchStooq(symbol); source = 'Stooq'; }
+    if (!rows) throw new Error('所有資料源皆失敗,建議下載 HTML 用本機開啟 (file://)');
+
+    const trs = [];
+    for (let i = 1; i < rows.length; i++) {
+      const tr = Math.max(
+        rows[i].high - rows[i].low,
+        Math.abs(rows[i].high - rows[i - 1].close),
+        Math.abs(rows[i].low  - rows[i - 1].close)
+      );
+      trs.push(tr);
+    }
+    const last14 = trs.slice(-14);
+    const atr14 = last14.reduce((a, b) => a + b, 0) / last14.length;
+    const lastClose = rows[rows.length - 1].close;
+    const atrPct = (atr14 / lastClose) * 100;
+    const periodHigh = rows.reduce((m, r) => Math.max(m, r.high), 0);
+
+    const data = { atrPct, lastClose, periodHigh, bars: rows.length, source };
+    cacheSet(cacheKey, data);
+    return { ...data, fromCache: false };
+  }
+
+  function atrToThresholds(atrPct) {
+    // 經驗公式:ATR% × 乘數 → 停利 / 停損
+    // story 股平均 ATR ~ 6%; growth ~ 3%; defensive ~ 1.5%
+    return {
+      lot1: Math.max(5,  Math.round(atrPct * 8)),
+      lot2: Math.max(10, Math.round(atrPct * 18)),
+      lot3: Math.max(5,  Math.round(atrPct * 4)),
+    };
+  }
+
+  // ─── 手動 ATR 套用 ───
+  $('applyManualAtrBtn').addEventListener('click', () => {
+    const atrPct = parseFloat($('manualAtr').value);
+    if (!atrPct || atrPct <= 0) return;
+    const t = atrToThresholds(atrPct);
+    $('lot1Pct').value = t.lot1;
+    $('lot2Pct').value = t.lot2;
+    $('lot3Pct').value = t.lot3;
+    $('stockType').value = 'custom';
+    const status = $('fetchStatus');
+    status.textContent = `✅ 手動 ATR=${atrPct.toFixed(1)}% → Lot +${t.lot1}/+${t.lot2}/-${t.lot3}%`;
+    status.classList.remove('text-slate-500', 'text-rose-600');
+    status.classList.add('text-emerald-600');
+    recompute();
+  });
+
+  async function runCalibrate(sym, { silent = false } = {}) {
+    const status = $('fetchStatus');
+    if (!silent) {
+      status.textContent = '⏳ 抓取 ' + sym + ' 資料中...';
+      status.classList.remove('text-rose-600', 'text-emerald-600');
+      status.classList.add('text-slate-500');
+    }
+    try {
+      const stock = await fetchStockData(sym);
+      const fx    = await fetchFxRate();
+      const t     = atrToThresholds(stock.atrPct);
+
+      $('lot1Pct').value      = t.lot1;
+      $('lot2Pct').value      = t.lot2;
+      $('lot3Pct').value      = t.lot3;
+      $('stockType').value    = 'custom';
+      $('currentPrice').value = stock.lastClose.toFixed(2);
+      $('peakPrice').value    = stock.periodHigh.toFixed(2);
+      if (fx?.rate) $('fxRate').value = fx.rate.toFixed(2);
+
+      const cacheTag = stock.fromCache && (!fx || fx.fromCache) ? ' 💾' : '';
+      status.textContent =
+        `✅ [${stock.source}] ATR ${stock.atrPct.toFixed(2)}% · 價 $${stock.lastClose.toFixed(2)} · 高 $${stock.periodHigh.toFixed(2)}` +
+        (fx ? ` · 匯率 ${fx.rate.toFixed(2)}` : '') +
+        ` → +${t.lot1}/+${t.lot2}/-${t.lot3}%${cacheTag}`;
+      status.classList.remove('text-slate-500', 'text-rose-600');
+      status.classList.add('text-emerald-600');
+      recompute();
+    } catch (err) {
+      status.textContent = '❌ ' + (err.message || '抓取失敗,請確認代號');
+      status.classList.remove('text-slate-500', 'text-emerald-600');
+      status.classList.add('text-rose-600');
+    }
+  }
+
+  $('calibrateBtn').addEventListener('click', () => {
+    const sym = $('symbol').value.trim();
+    if (sym) runCalibrate(sym);
+  });
+
+  // 頁面載入時有快取就直接套用,0 網路請求
+  window.addEventListener('load', () => {
+    const sym = $('symbol').value.trim();
+    if (sym && cacheGet('stock:' + sym.toUpperCase())) runCalibrate(sym, { silent: true });
+  });
+
+  // ─── 綁定即時重算 ───
+  ['avgCost', 'currentPrice', 'shares', 'fxRate', 'peakPrice',
+   'lot1Pct', 'lot2Pct', 'lot3Pct'].forEach((id) => {
+    $(id).addEventListener('input', recompute);
+  });
+
+  recompute();
+})();
+</script>
+</body>
+</html>

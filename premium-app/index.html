@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>股票盈虧 + 三段式出場 V2 | Premium</title>
+  <!-- SEO & Open Graph Tags -->
+  <meta name="description" content="自動校準波動度的高階股票盈虧與三段式出場計算機" />
+  <meta property="og:title" content="股票盈虧 + 三段式出場 V2" />
+  <meta property="og:description" content="左側加碼 → 分批出場 → 自動校準波動度" />
+  <meta property="og:type" content="website" />
+  
+  <!-- Premium Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Decorative background elements for glassmorphism effect -->
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+
+  <div class="app-container">
+    <header class="app-header">
+      <div class="header-badge">V2.0 PRO</div>
+      <h1>股票盈虧 & 三段式出場</h1>
+      <p>左側加碼 • 分批出場 • 自動校準波動度</p>
+    </header>
+
+    <main class="dashboard">
+      <!-- 1. 持倉資料 -->
+      <section class="card section-inputs">
+        <div class="card-header">
+          <h2>1. 持倉資料</h2>
+          <div class="status-badge" id="fetchStatus">等待輸入...</div>
+        </div>
+        
+        <div class="input-grid">
+          <div class="input-group">
+            <label for="symbol">股票代號</label>
+            <div class="input-with-button">
+              <input type="text" id="symbol" value="NVTS" autocomplete="off" />
+              <button id="calibrateBtn" class="btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> 自動校準
+              </button>
+            </div>
+          </div>
+          
+          <div class="input-group">
+            <label for="manualAtr">手動 ATR% <span class="label-hint">(每日振幅)</span></label>
+            <div class="input-with-button">
+              <input type="number" id="manualAtr" step="0.1" value="5.0" />
+              <button id="applyManualAtrBtn" class="btn-secondary">套用</button>
+            </div>
+            <div class="input-hint">故事股 ~5-8% • 成長股 ~2-4% • 防禦股 ~1-2%</div>
+          </div>
+          
+          <div class="input-group">
+            <label for="avgCost">買入均價 (USD)</label>
+            <input type="number" id="avgCost" step="0.01" value="7.40" />
+          </div>
+          
+          <div class="input-group">
+            <label for="currentPrice">目前股價 (USD)</label>
+            <input type="number" id="currentPrice" step="0.01" value="8.50" />
+          </div>
+          
+          <div class="input-group">
+            <label for="shares">持有股數</label>
+            <input type="number" id="shares" step="1" value="1000" />
+          </div>
+          
+          <div class="input-group">
+            <label for="fxRate">美金兌台幣匯率</label>
+            <input type="number" id="fxRate" step="0.01" value="32.50" />
+          </div>
+          
+          <div class="input-group full-width">
+            <label for="peakPrice">此波段最高價 <span class="label-hint">(用於停利追蹤)</span></label>
+            <input type="number" id="peakPrice" step="0.01" value="8.50" />
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 目前盈虧 -->
+      <section class="card section-pnl">
+        <div class="card-header">
+          <h2>2. 目前盈虧</h2>
+        </div>
+        
+        <div class="pnl-grid">
+          <div class="pnl-box">
+            <div class="pnl-label">總成本 (NT$)</div>
+            <div class="pnl-value font-number" id="totalCost">NT$0</div>
+            <div class="pnl-subtext" id="totalCostUsd">$0 USD</div>
+          </div>
+          
+          <div class="pnl-box">
+            <div class="pnl-label">目前市值 (NT$)</div>
+            <div class="pnl-value font-number" id="totalValue">NT$0</div>
+            <div class="pnl-subtext" id="totalValueUsd">$0 USD</div>
+          </div>
+          
+          <div class="pnl-box highlight-box" id="unrealizedPnlBox">
+            <div class="pnl-label">未實現盈虧 (NT$)</div>
+            <div class="pnl-value flex-center font-number">
+              <span id="trendingIconSpan"></span>
+              <span id="unrealizedPnlValue">NT$0</span>
+            </div>
+            <div class="pnl-subtext" id="unrealizedPnlPct">0.00%</div>
+          </div>
+        </div>
+
+        <div class="bonus-box mt-4">
+          <div class="bonus-label">💝 楠瑆分紅 (15% × 未實現獲利)</div>
+          <div class="bonus-value font-number" id="girlfriendShare">NT$0</div>
+        </div>
+      </section>
+
+      <!-- 3. 三段式出場設定 -->
+      <section class="card section-strategy">
+        <div class="card-header">
+          <h2>3. 三段式出場設定</h2>
+        </div>
+        
+        <div class="strategy-controls">
+          <div class="input-group flex-2">
+            <label for="stockType">股票類型</label>
+            <div class="select-wrapper">
+              <select id="stockType">
+                <option value="story">故事小型股 (+50 / +100 / -25%)</option>
+                <option value="growth">成長型 (+25 / +60 / -15%)</option>
+                <option value="defensive">防禦型 (+15 / +30 / -10%)</option>
+                <option value="custom">自訂</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="pct-inputs flex-3">
+            <div class="input-group">
+              <label for="lot1Pct">Lot1 停利%</label>
+              <input type="number" id="lot1Pct" step="1" value="50" class="text-center" />
+            </div>
+            <div class="input-group">
+              <label for="lot2Pct">Lot2 停利%</label>
+              <input type="number" id="lot2Pct" step="1" value="100" class="text-center" />
+            </div>
+            <div class="input-group">
+              <label for="lot3Pct">Lot3 回檔%</label>
+              <input type="number" id="lot3Pct" step="1" value="25" class="text-center" />
+            </div>
+          </div>
+        </div>
+
+        <div class="lots-grid mt-4">
+          <!-- Lot 1 -->
+          <div class="lot-card lot-1">
+            <div class="lot-header">
+              <span class="lot-title">Lot 1 · 免費交易</span>
+              <span class="lot-badge">30%</span>
+            </div>
+            <div class="lot-target">觸發價 (漲 <span id="lot1PctLabel">50</span>%)</div>
+            <div class="lot-trigger font-number" id="lot1Trigger">$0</div>
+            <div class="lot-details">
+              <span>賣出股數</span>
+              <span id="lot1Shares" class="font-number font-medium">0 股</span>
+            </div>
+            <div class="lot-details">
+              <span>實現獲利</span>
+              <span id="lot1Profit" class="font-number font-bold text-emerald">NT$0</span>
+            </div>
+            <div class="lot-status" id="lot1Status">尚未觸發</div>
+          </div>
+
+          <!-- Lot 2 -->
+          <div class="lot-card lot-2">
+            <div class="lot-header">
+              <span class="lot-title">Lot 2 · 基本目標</span>
+              <span class="lot-badge">30%</span>
+            </div>
+            <div class="lot-target">觸發價 (漲 <span id="lot2PctLabel">100</span>%)</div>
+            <div class="lot-trigger font-number" id="lot2Trigger">$0</div>
+            <div class="lot-details">
+              <span>賣出股數</span>
+              <span id="lot2Shares" class="font-number font-medium">0 股</span>
+            </div>
+            <div class="lot-details">
+              <span>實現獲利</span>
+              <span id="lot2Profit" class="font-number font-bold text-sky">NT$0</span>
+            </div>
+            <div class="lot-status" id="lot2Status">尚未觸發</div>
+          </div>
+
+          <!-- Lot 3 -->
+          <div class="lot-card lot-3">
+            <div class="lot-header">
+              <span class="lot-title">Lot 3 · 跑者</span>
+              <span class="lot-badge">40%</span>
+            </div>
+            <div class="lot-target">停利點 (高點回檔 <span id="lot3PctLabel">25</span>%)</div>
+            <div class="lot-trigger font-number" id="lot3Trigger">$0</div>
+            <div class="lot-details">
+              <span>賣出股數</span>
+              <span id="lot3Shares" class="font-number font-medium">0 股</span>
+            </div>
+            <div class="lot-details">
+              <span>實現獲利</span>
+              <span id="lot3Profit" class="font-number font-bold text-amber">NT$0</span>
+            </div>
+            <div class="lot-status" id="lot3Status">尚未觸發</div>
+          </div>
+        </div>
+
+        <div class="total-realized-box mt-4">
+          <div class="total-label">三段全部達標預估總實現獲利 (NT$)</div>
+          <div class="total-value font-number" id="totalRealized">NT$0</div>
+          <div class="total-subtext font-number" id="totalRealizedUsd">$0 USD</div>
+        </div>
+      </section>
+
+      <!-- 4. 使用說明 -->
+      <section class="card section-guide">
+        <div class="card-header">
+          <h2>4. 三段式出場心法</h2>
+        </div>
+        <ul class="guide-list">
+          <li><strong>Lot 1 (30%)：</strong>先收回本金 + 部分獲利，讓剩下的部位變成「免費交易」，下跌不再焦慮。</li>
+          <li><strong>Lot 2 (30%)：</strong>波段主目標觸發就落袋，鎖定確定利潤。</li>
+          <li><strong>Lot 3 (40%)：</strong>保留跑者，用「高點回檔」追蹤停利，避免賣太早錯過大漲。</li>
+          <li><strong>🤖 自動校準：</strong>會抓近 14 日 ATR (每日振幅)，把停利停損調到股票真實波動範圍。ATR 越大 → 停利越寬。</li>
+        </ul>
+        <div class="guide-footer">資料來源：Stooq / Yahoo (免金鑰)。台股請改為美股代號。</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
