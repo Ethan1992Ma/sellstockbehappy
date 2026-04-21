@@ -192,7 +192,16 @@
   }
 
   function proxyList(baseUrl) {
+    let vercelProxyUrl = baseUrl;
+    // Route through Vercel Edge Rewrites for deployment
+    if (baseUrl.includes('query1.finance.yahoo.com')) {
+      vercelProxyUrl = baseUrl.replace('https://query1.finance.yahoo.com', '/api/yahoo');
+    } else if (baseUrl.includes('stooq.com')) {
+      vercelProxyUrl = baseUrl.replace('https://stooq.com', '/api/stooq');
+    }
+
     return [
+      vercelProxyUrl,
       baseUrl,
       'https://api.allorigins.win/get?url=' + encodeURIComponent(baseUrl),
       'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(baseUrl),
